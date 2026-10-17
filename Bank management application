@@ -1,0 +1,255 @@
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <string>
+
+using namespace std;
+
+class Account {
+private:
+    int accountNumber;
+    string accountHolderName;
+    double balance;
+
+public:
+    Account() : accountNumber(0), accountHolderName(""), balance(0.0) {}
+
+    Account(int accNum, string name, double initialBalance) {
+        accountNumber = accNum;
+        accountHolderName = name;
+        balance = initialBalance;
+    }
+
+    int getAccountNumber() const { return accountNumber; }
+    string getHolderName() const { return accountHolderName; }
+    double getBalance() const { return balance; }
+
+    void deposit(double amount) {
+        if (amount > 0) {
+            balance += amount;
+            cout << "\nAmount Deposited Successfully!";
+        } else {
+            cout << "\nInvalid deposit amount.";
+        }
+    }
+
+    void withdraw(double amount) {
+        if (amount <= 0) {
+            cout << "\nInvalid withdrawal amount.";
+        } else if (amount > balance) {
+            cout << "\nInsufficient balance!";
+        } else {
+            balance -= amount;
+            cout << "\nAmount Withdrawn Successfully!";
+        }
+    }
+
+    void display() const {
+        cout << "\nAccount Number : " << accountNumber;
+        cout << "\nAccount Holder : " << accountHolderName;
+        cout << "\nBalance        : $" << fixed << setprecision(2) << balance;
+    }
+};
+
+void saveAccountToFile(const Account& acc) {
+    ofstream outFile("bank_records.dat", ios::binary | ios::app);
+    if (!outFile) {
+        cout << "\nError opening file for writing.";
+        return;
+    }
+    
+    int accNum = acc.getAccountNumber();
+    double bal = acc.getBalance();
+    string name = acc.getHolderName();
+    size_t nameLength = name.size();
+
+    outFile.write(reinterpret_cast<char*>(&accNum), sizeof(accNum));
+    outFile.write(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+    outFile.write(name.c_str(), nameLength);
+    outFile.write(reinterpret_cast<char*>(&bal), sizeof(bal));
+    
+    outFile.close();
+}
+
+bool updateAccountInFile(int accNumToFind, double amount, int transactionType) {
+    ifstream inFile("bank_records.dat", ios::binary);
+    ofstream tempFile("temp.dat", ios::binary);
+    
+    if (!inFile || !tempFile) {
+        cout << "\nError accessing storage files.";
+        return false;
+    }
+
+    bool found = false;
+    int accNum;
+    size_t nameLength;
+    double bal;
+
+    while (inFile.read(reinterpret_cast<char*>(&accNum), sizeof(accNum))) {
+        inFile.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+        string name(nameLength, ' ');
+        inFile.read(&name[0], nameLength);
+        inFile.read(reinterpret_cast<char*>(&bal), sizeof(bal));
+
+        Account tempAcc(accNum, name, bal);
+
+        if (accNum == accNumToFind) {
+            found = true;
+            if (transactionType == 1) {
+                tempAcc.deposit(amount);
+            } else if (transactionType == 2) {
+                tempAcc.withdraw(amount);
+            }
+        }
+
+        int finalAccNum = tempAcc.getAccountNumber();
+        double finalBal = tempAcc.getBalance();
+        string finalName = tempAcc.getHolderName();
+        size_t finalNameLen = finalName.size();
+
+        tempFile.write(reinterpret_cast<char*>(&finalAccNum), sizeof(finalAccNum));
+        tempFile.write(reinterpret_cast<char*>(&finalNameLen), sizeof(finalNameLen));
+        tempFile.write(finalName.c_str(), finalNameLen);
+        tempFile.write(reinterpret_cast<char*>(&finalBal), sizeof(finalBal));
+    }
+
+    inFile.close();
+    tempFile.close();
+
+    remove("bank_records.dat");
+    rename("temp.dat", "bank_records.dat");
+
+    return found;
+}
+
+void checkBalanceFromFile(int accNumToFind) {
+    ifstream inFile("bank_records.dat", ios::binary);
+    if (!inFile) {
+        cout << "\nNo records found in database.";
+        return;
+    }
+
+    bool found = false;
+    int accNum;
+    size_t nameLength;
+    double bal;
+
+    while (inFile.read(reinterpret_cast<char*>(&accNum), sizeof(accNum))) {
+        inFile.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+        string name(nameLength, ' ');
+        inFile.read(&name[0], nameLength);
+        inFile.read(reinterpret_cast<char*>(&bal), sizeof(bal));
+
+        if (accNum == accNumToFind) {
+            Account tempAcc(accNum, name, bal);
+            tempAcc.display();
+            found = true;
+            break;
+        }
+    }
+
+    inFile.close();
+    if (!found) {
+        cout << "\nAccount not found.";
+    }
+}
+
+bool accountExists(int accNumToFind) {
+    ifstream inFile("bank_records.dat", ios::binary);
+    if (!inFile) return false;
+
+    int accNum;
+    size_t nameLength;
+    double bal;
+    bool exists = false;
+
+    while (inFile.read(reinterpret_cast<char*>(&accNum), sizeof(accNum))) {
+        inFile.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+        string name(nameLength, ' ');
+        inFile.read(&name[0], nameLength);
+        inFile.read(reinterpret_cast<char*>(&bal), sizeof(bal));
+
+        if (accNum == accNumToFind) {
+            exists = true;
+            break;
+        }
+    }
+    inFile.close();
+    return exists;
+}
+
+int main() {
+    int choice;
+    int accNum;
+    string name;
+    double amount;
+
+    do {
+        cout << "\n\n=== BANK MANAGEMENT SYSTEM ===";
+        cout << "\n1. Open New Account";
+        cout << "\n2. Deposit Amount";
+        cout << "\n3. Withdraw Amount";
+        cout << "\n4. Balance Inquiry";
+        cout << "\n5. Exit";
+        cout << "\nEnter choice (1-5): ";
+        cin >> choice;
+
+        switch (choice) {
+            case 1:
+                cout << "\nEnter Unique Account Number: ";
+                cin >> accNum;
+                if (accountExists(accNum)) {
+                    cout << "\nAccount number already exists! Try a different one.";
+                    break;
+                }
+                cout << "Enter Account Holder Name: ";
+                cin.ignore();
+                getline(cin, name);
+                cout << "Enter Initial Balance: ";
+                cin >> amount;
+                if (amount < 0) {
+                    cout << "\nInitial balance cannot be negative.";
+                } else {
+                    Account newAcc(accNum, name, amount);
+                    saveAccountToFile(newAcc);
+                    cout << "\nAccount Created Successfully!";
+                }
+                break;
+
+            case 2:
+                cout << "\nEnter Account Number: ";
+                cin >> accNum;
+                cout << "Enter Amount to Deposit: ";
+                cin >> amount;
+                if (!updateAccountInFile(accNum, amount, 1)) {
+                    cout << "\nAccount not found.";
+                }
+                break;
+
+            case 3:
+                cout << "\nEnter Account Number: ";
+                cin >> accNum;
+                cout << "Enter Amount to Withdraw: ";
+                cin >> amount;
+                if (!updateAccountInFile(accNum, amount, 2)) {
+                    cout << "\nAccount not found.";
+                }
+                break;
+
+            case 4:
+                cout << "\nEnter Account Number: ";
+                cin >> accNum;
+                checkBalanceFromFile(accNum);
+                break;
+
+            case 5:
+                cout << "\nThank you for using our Bank Management System!";
+                break;
+
+            default:
+                cout << "\nInvalid Choice! Please enter a number between 1 and 5.";
+        }
+    } while (choice != 5);
+
+    return 0;
+}
